@@ -1,6 +1,8 @@
-use ark_ec::pairing::Pairing;
+use ark_ec::pairing::{Pairing, PairingOutput};
+use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_poly::univariate::DensePolynomial;
-use ark_std::Zero;
+use ark_std::{end_timer, start_timer, Zero};
+use sha2::Sha256;
 use silent_threshold::{
     decryption::agg_dec,
     encryption::encrypt,
@@ -11,15 +13,18 @@ use silent_threshold::{
 type E = ark_bls12_381::Bls12_381;
 type G2 = <E as Pairing>::G2;
 type UniPoly381 = DensePolynomial<<E as Pairing>::ScalarField>;
+type TargetField = <E as Pairing>::TargetField;
 
+const DOMAIN: &[u8] = b"__DELOREAN_DOMAIN__";
 fn main() {
     let mut rng = ark_std::test_rng();
-    let n = 1 << 5; // actually n-1 total parties. one party is a dummy party that is always true
+    let n = 1 << 4; // actually n-1 total parties. one party is a dummy party that is always true
     let t: usize = 9;
     debug_assert!(t < n);
 
     let params = KZG10::<E, UniPoly381>::setup(n, &mut rng).unwrap();
 
+    let keygen_time = start_timer!(|| format!("Keygen with degree {} and threshold {}", n, t));
     let mut sk: Vec<SecretKey<E>> = Vec::new();
     let mut pk: Vec<PublicKey<E>> = Vec::new();
 
@@ -32,9 +37,21 @@ fn main() {
         sk.push(SecretKey::<E>::new(&mut rng));
         pk.push(sk[i].get_pk(i, &params, n))
     }
+    end_timer!(keygen_time);
 
     let agg_key = AggregateKey::<E>::new(pk, &params);
-    let ct = encrypt::<E>(&agg_key, t, &params);
+    let msg = b"hello world this is the tag that i want to get signedeeeeeeeeeeeeeeeeee";
+    let hasher = <DefaultFieldHasher<Sha256> as HashToField<TargetField>>::new(DOMAIN);
+    let hashes: Vec<PairingOutput<E>> = hasher
+        .hash_to_field(msg, 1)
+        .into_iter()
+        .map(PairingOutput)
+        .collect();
+    let msg_hash = hashes[0];
+    let setup_time =
+        start_timer!(|| format!("Encrypt::Setup with degree {} and threshold {}", n, t));
+    let ct = encrypt::<E>(&agg_key, t, &params, msg_hash);
+    end_timer!(setup_time);
 
     // compute partial decryptions
     let mut partial_decryptions: Vec<G2> = Vec::new();
@@ -54,5 +71,6 @@ fn main() {
         selector.push(false);
     }
 
-    let _dec_key = agg_dec(&partial_decryptions, &ct, &selector, &agg_key, &params);
+    let dec_key = agg_dec(&partial_decryptions, &ct, &selector, &agg_key, &params);
+    assert_eq!(dec_key, msg_hash)
 }

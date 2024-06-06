@@ -4,6 +4,7 @@ use ark_ec::{pairing::Pairing, Group};
 use ark_poly::DenseUVPolynomial;
 use ark_poly::{domain::EvaluationDomain, univariate::DensePolynomial, Radix2EvaluationDomain};
 use ark_serialize::*;
+use ark_std::{end_timer, start_timer};
 use ark_std::{rand::RngCore, One, UniformRand, Zero};
 use std::ops::{Mul, Sub};
 
@@ -72,7 +73,6 @@ impl<E: Pairing> SecretKey<E> {
         // TODO: This runs in quadratic time because we are not preprocessing the Li's
         // Fix this.
         let domain = Radix2EvaluationDomain::<E::ScalarField>::new(n).unwrap();
-
         let li = lagrange_poly(n, id);
 
         let mut sk_li_by_z = vec![];

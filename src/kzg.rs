@@ -6,6 +6,7 @@ use ark_ec::{pairing::Pairing, CurveGroup, Group};
 use ark_ec::{scalar_mul::fixed_base::FixedBase, VariableBaseMSM};
 use ark_ff::{One, PrimeField, UniformRand, Zero};
 use ark_poly::DenseUVPolynomial;
+use ark_std::{end_timer, start_timer};
 use ark_std::{format, marker::PhantomData, ops::*, vec};
 
 use ark_std::rand::RngCore;
@@ -50,7 +51,7 @@ where
             return Err(Error::DegreeIsZero);
         }
 
-        //let setup_time = start_timer!(|| format!("KZG10::Setup with degree {}", max_degree));
+        let setup_time = start_timer!(|| format!("KZG10::Setup with degree {}", max_degree));
         let beta = E::ScalarField::rand(rng);
         let g = E::G1::generator();
         let h = E::G2::generator();
@@ -82,7 +83,7 @@ where
             powers_of_h,
         };
 
-        //end_timer!(setup_time);
+        end_timer!(setup_time);
         Ok(pp)
     }
 

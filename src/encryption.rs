@@ -40,6 +40,7 @@ pub fn encrypt<E: Pairing>(
     apk: &AggregateKey<E>,
     t: usize,
     params: &UniversalParams<E>,
+    msg: PairingOutput<E>,
 ) -> Ciphertext<E> {
     let mut rng = ark_std::test_rng();
     let gamma = E::ScalarField::rand(&mut rng);
@@ -84,7 +85,7 @@ pub fn encrypt<E: Pairing>(
     sa2[5] = (params.powers_of_h[1] + apk.h_minus1) * s[4];
 
     // enc_key = s4*e_gh
-    let enc_key = apk.e_gh.mul(s[4]);
+    let enc_key = apk.e_gh.mul(s[4]) + msg;
 
     Ciphertext {
         gamma_g2,
@@ -124,7 +125,9 @@ mod tests {
         }
 
         let ak = AggregateKey::<E>::new(pk, &params);
-        let ct = encrypt::<E>(&ak, 2, &params);
+        let msg: PairingOutput<E> = { PairingOutput::<E>::generator() };
+
+        let ct = encrypt::<E>(&ak, 2, &params, msg);
 
         let mut ct_bytes = Vec::new();
         ct.serialize_compressed(&mut ct_bytes).unwrap();

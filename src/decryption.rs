@@ -140,11 +140,9 @@ pub fn agg_dec<E: Pairing>(
     let mut enc_key_rhs = ct.sa2.to_vec();
     enc_key_rhs.append(&mut w2.to_vec());
 
-    let enc_key = E::multi_pairing(enc_key_lhs, enc_key_rhs);
+    let msg = ct.enc_key - E::multi_pairing(enc_key_lhs, enc_key_rhs);
 
-    debug_assert_eq!(enc_key, ct.enc_key);
-
-    enc_key
+    msg
 }
 
 #[cfg(test)]
@@ -155,6 +153,7 @@ mod tests {
         kzg::KZG10,
         setup::{PublicKey, SecretKey},
     };
+    use ark_ec::Group;
     use ark_poly::univariate::DensePolynomial;
 
     type E = ark_bls12_381::Bls12_381;
@@ -184,7 +183,8 @@ mod tests {
         }
 
         let agg_key = AggregateKey::<E>::new(pk, &params);
-        let ct = encrypt::<E>(&agg_key, t, &params);
+        let msg: PairingOutput<E> = { PairingOutput::<E>::generator() };
+        let ct = encrypt::<E>(&agg_key, t, &params, msg);
 
         // compute partial decryptions
         let mut partial_decryptions: Vec<G2> = Vec::new();
