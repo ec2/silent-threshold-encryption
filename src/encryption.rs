@@ -10,7 +10,7 @@ use ark_std::{UniformRand, Zero};
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct Ciphertext<E: Pairing> {
-    pub gamma_g2: E::G2,
+    pub gamma_g2: E::G2, // Tag
     pub sa1: [E::G1; 2],
     pub sa2: [E::G2; 6],
     pub enc_key: PairingOutput<E>, //key to be used for encapsulation
@@ -103,18 +103,16 @@ mod tests {
         kzg::KZG10,
         setup::{PublicKey, SecretKey},
     };
-    use ark_poly::univariate::DensePolynomial;
 
     type E = ark_bls12_381::Bls12_381;
     type G1 = <E as Pairing>::G1;
     type G2 = <E as Pairing>::G2;
-    type UniPoly381 = DensePolynomial<<E as Pairing>::ScalarField>;
 
     #[test]
     fn test_encryption() {
         let mut rng = ark_std::test_rng();
         let n = 8;
-        let params = KZG10::<E, UniPoly381>::setup(n, &mut rng).unwrap();
+        let params = KZG10::<E>::setup(n, &mut rng).unwrap();
 
         let mut sk: Vec<SecretKey<E>> = Vec::new();
         let mut pk: Vec<PublicKey<E>> = Vec::new();

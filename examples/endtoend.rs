@@ -1,6 +1,5 @@
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
-use ark_poly::univariate::DensePolynomial;
 use ark_std::{end_timer, start_timer, Zero};
 use sha2::Sha256;
 use silent_threshold::{
@@ -12,17 +11,16 @@ use silent_threshold::{
 
 type E = ark_bls12_381::Bls12_381;
 type G2 = <E as Pairing>::G2;
-type UniPoly381 = DensePolynomial<<E as Pairing>::ScalarField>;
 type TargetField = <E as Pairing>::TargetField;
 
 const DOMAIN: &[u8] = b"__DELOREAN_DOMAIN__";
 fn main() {
     let mut rng = ark_std::test_rng();
-    let n = 1 << 4; // actually n-1 total parties. one party is a dummy party that is always true
+    let n = 1 << 9; // actually n-1 total parties. one party is a dummy party that is always true
     let t: usize = 9;
     debug_assert!(t < n);
 
-    let params = KZG10::<E, UniPoly381>::setup(n, &mut rng).unwrap();
+    let params = KZG10::<E>::setup(n, &mut rng).unwrap();
 
     let keygen_time = start_timer!(|| format!("Keygen with degree {} and threshold {}", n, t));
     let mut sk: Vec<SecretKey<E>> = Vec::new();

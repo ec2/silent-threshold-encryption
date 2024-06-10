@@ -2,25 +2,40 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use ark_ec::{pairing::Pairing, CurveGroup, Group};
 use ark_ec::{scalar_mul::fixed_base::FixedBase, VariableBaseMSM};
-use ark_ff::{One, PrimeField, UniformRand, Zero};
-use ark_poly::DenseUVPolynomial;
+use ark_ff::{FftField, One, PrimeField, UniformRand, Zero};
+use ark_poly::univariate::DensePolynomial;
+use ark_poly::{
+    DenseUVPolynomial, EvaluationDomain, Evaluations, Polynomial as _, Radix2EvaluationDomain,
+};
 use ark_std::{end_timer, start_timer};
 use ark_std::{format, marker::PhantomData, ops::*, vec};
 
+use crate::utils::lagrange_poly;
 use ark_std::rand::RngCore;
-
-pub struct KZG10<E: Pairing, P: DenseUVPolynomial<E::ScalarField>> {
+use core::cmp::Ordering;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator as _};
+use rayon::iter::{ParallelBridge, ParallelIterator};
+pub struct KZG10<E: Pairing> {
     _engine: PhantomData<E>,
-    _poly: PhantomData<P>,
+    // _poly: PhantomData<P>,
 }
 
+#[derive(Clone)]
 pub struct UniversalParams<E: Pairing> {
     /// Group elements of the form `{ \beta^i G }`, where `i` ranges from 0 to `degree`.
     pub powers_of_g: Vec<E::G1Affine>,
     /// Group elements of the form `{ \beta^i H }`, where `i` ranges from 0 to `degree`.
     pub powers_of_h: Vec<E::G2Affine>,
+
+    // Lagrange polynomials
+    pub l_i: Vec<DensePolynomial<E::ScalarField>>,
+    // Precompute commitments
+    pub li_by_z: HashMap<(usize, usize), E::G1>,
 }
 
 #[derive(Debug)]
@@ -39,12 +54,9 @@ pub enum Error {
     },
 }
 
-impl<E, P> KZG10<E, P>
+impl<E> KZG10<E>
 where
     E: Pairing,
-    P: DenseUVPolynomial<E::ScalarField, Point = E::ScalarField>,
-    for<'a, 'b> &'a P: Div<&'b P, Output = P>,
-    for<'a, 'b> &'a P: Sub<&'b P, Output = P>,
 {
     pub fn setup<R: RngCore>(max_degree: usize, rng: &mut R) -> Result<UniversalParams<E>, Error> {
         if max_degree < 1 {
@@ -78,16 +90,42 @@ where
         let powers_of_g = E::G1::normalize_batch(&powers_of_g);
         let powers_of_h = E::G2::normalize_batch(&powers_of_h);
 
-        let pp = UniversalParams {
+        let l_i = (0..max_degree)
+            .map(|i| Self::lagrange_poly(max_degree, i))
+            .collect::<Vec<_>>();
+        let mut pp = UniversalParams {
             powers_of_g,
             powers_of_h,
+            li_by_z: HashMap::new(),
+            l_i,
         };
 
+        let domain = Radix2EvaluationDomain::<E::ScalarField>::new(max_degree).unwrap();
+
+        let precommit_time = start_timer!(|| "Precommitting to lagrange polynomials");
+
+        pp.li_by_z = (0..max_degree)
+            .into_par_iter()
+            .map(|i| (i..max_degree).into_par_iter().map(move |j| (i, j)))
+            .flatten()
+            .filter_map(|(i, j)| match i.cmp(&j) {
+                Ordering::Less => Some((i, j, pp.l_i[j].mul(&pp.l_i[i]))),
+                Ordering::Equal => Some((i, j, pp.l_i[i].mul(&pp.l_i[i]).sub(&pp.l_i[i]))),
+                Ordering::Greater => None,
+            })
+            .map(|(i, j, numerator)| (i, j, numerator.divide_by_vanishing_poly(domain).unwrap().0))
+            .map(|(i, j, f)| ((i, j), Self::commit_g1(&pp, &f).unwrap().into()))
+            .collect::<HashMap<(usize, usize), E::G1>>();
+
+        end_timer!(precommit_time);
         end_timer!(setup_time);
         Ok(pp)
     }
 
-    pub fn commit_g1(params: &UniversalParams<E>, polynomial: &P) -> Result<E::G1Affine, Error> {
+    pub fn commit_g1(
+        params: &UniversalParams<E>,
+        polynomial: &DensePolynomial<E::ScalarField>,
+    ) -> Result<E::G1Affine, Error> {
         let d = polynomial.degree();
         check_degree_is_too_large(d, params.powers_of_g.len())?;
 
@@ -100,7 +138,10 @@ where
         Ok(commitment.into_affine())
     }
 
-    pub fn commit_g2(params: &UniversalParams<E>, polynomial: &P) -> Result<E::G2Affine, Error> {
+    pub fn commit_g2(
+        params: &UniversalParams<E>,
+        polynomial: &DensePolynomial<E::ScalarField>,
+    ) -> Result<E::G2Affine, Error> {
         let d = polynomial.degree();
         check_degree_is_too_large(d, params.powers_of_h.len())?;
 
@@ -113,17 +154,38 @@ where
 
         Ok(commitment.into_affine())
     }
+    // 1 at omega^i and 0 elsewhere on domain {omega^i}_{i \in [n]}
+    pub fn lagrange_poly(n: usize, i: usize) -> DensePolynomial<E::ScalarField> {
+        debug_assert!(i < n);
+        //todo: check n is a power of 2
+        let mut evals = vec![];
+        for j in 0..n {
+            let l_of_x: u64 = if i == j { 1 } else { 0 };
+            evals.push(E::ScalarField::from(l_of_x));
+        }
+
+        //powers of nth root of unity
+        let domain = Radix2EvaluationDomain::<E::ScalarField>::new(n).unwrap();
+        let eval_form = Evaluations::from_vec_and_domain(evals, domain);
+        //interpolated polynomial over the n points
+        eval_form.interpolate()
+    }
 
     pub fn compute_opening_proof(
         params: &UniversalParams<E>,
-        polynomial: &P,
+        polynomial: &DensePolynomial<E::ScalarField>,
         point: &E::ScalarField,
     ) -> Result<E::G1Affine, Error> {
         let eval = polynomial.evaluate(point);
-        let eval_as_poly = P::from_coefficients_vec(vec![eval]);
-        let numerator = polynomial.clone().sub(&eval_as_poly);
-        let divisor =
-            P::from_coefficients_vec(vec![E::ScalarField::zero() - point, E::ScalarField::one()]);
+        let eval_as_poly =
+            <DensePolynomial<E::ScalarField> as DenseUVPolynomial<E::ScalarField>>::from_coefficients_vec(vec![
+                eval,
+            ]);
+        let numerator: DensePolynomial<E::ScalarField> = polynomial.clone().sub(&eval_as_poly);
+        let divisor = DenseUVPolynomial::<E::ScalarField>::from_coefficients_vec(vec![
+            E::ScalarField::zero() - point,
+            E::ScalarField::one(),
+        ]);
         let witness_polynomial = numerator.div(&divisor);
 
         Self::commit_g1(params, &witness_polynomial)
