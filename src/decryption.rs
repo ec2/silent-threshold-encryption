@@ -16,8 +16,47 @@ use crate::{
     utils::interp_mostly_zero,
 };
 
-pub fn agg_dec<E: Pairing>(
+// compute sigma = (\sum B(omega^i)partial_decryptions[i])/(n) for i in parties
+
+pub fn aggregate_partials<E: Pairing>(
+    params: &UniversalParams<E>,
     partial_decryptions: &[E::G2], //insert 0 if a party did not respond or verification failed
+    selector: &[bool],
+) -> E::G2 {
+    let n = partial_decryptions.len();
+    let domain = Radix2EvaluationDomain::<E::ScalarField>::new(n).unwrap();
+    let domain_elements: Vec<E::ScalarField> = domain.elements().collect();
+    let n_inv: <E as Pairing>::ScalarField =
+        E::ScalarField::one() / E::ScalarField::from((n) as u32);
+
+    // points is where B is set to zero
+    // parties is the set of parties who have signed
+    let mut points = vec![domain_elements[0]]; // 0 is the dummy party that is always true
+    let mut parties: Vec<usize> = Vec::new(); // parties indexed from 0..n-1
+    for i in 0..n {
+        if selector[i] {
+            parties.push(i);
+        } else {
+            points.push(domain_elements[i]);
+        }
+    }
+    let b = interp_mostly_zero(E::ScalarField::one(), &points);
+    let b_evals = domain.fft(&b.coeffs);
+
+    // compute sigma = (\sum B(omega^i)partial_decryptions[i])/(n) for i in parties
+    let mut bases: Vec<<E as Pairing>::G2Affine> = Vec::new();
+    let mut scalars: Vec<<E as Pairing>::ScalarField> = Vec::new();
+    for &i in &parties {
+        bases.push(partial_decryptions[i].into());
+        scalars.push(b_evals[i]);
+    }
+    let mut sigma = E::G2::msm(bases.as_slice(), scalars.as_slice()).unwrap();
+    sigma *= n_inv;
+    sigma
+}
+
+pub fn agg_dec<E: Pairing>(
+    sigma: E::G2, // The aggregate partial decryptions
     ct: &Ciphertext<E>,
     selector: &[bool],
     agg_key: &AggregateKey<E>,
@@ -69,7 +108,8 @@ pub fn agg_dec<E: Pairing>(
 
     let bhat_g1: E::G1 = KZG10::<E>::commit_g1(params, &bhat).unwrap().into();
 
-    let n_inv = E::ScalarField::one() / E::ScalarField::from((n) as u32);
+    let n_inv: <E as Pairing>::ScalarField =
+        E::ScalarField::one() / E::ScalarField::from((n) as u32);
 
     // compute the aggregate public key
     let mut bases: Vec<<E as Pairing>::G1Affine> = Vec::new();
@@ -80,16 +120,6 @@ pub fn agg_dec<E: Pairing>(
     }
     let mut apk = E::G1::msm(bases.as_slice(), scalars.as_slice()).unwrap();
     apk *= n_inv;
-
-    // compute sigma = (\sum B(omega^i)partial_decryptions[i])/(n) for i in parties
-    let mut bases: Vec<<E as Pairing>::G2Affine> = Vec::new();
-    let mut scalars: Vec<<E as Pairing>::ScalarField> = Vec::new();
-    for &i in &parties {
-        bases.push(partial_decryptions[i].into());
-        scalars.push(b_evals[i]);
-    }
-    let mut sigma = E::G2::msm(bases.as_slice(), scalars.as_slice()).unwrap();
-    sigma *= n_inv;
 
     // compute Qx, Qhatx and Qz
     let mut bases: Vec<<E as Pairing>::G1Affine> = Vec::new();

@@ -40,11 +40,14 @@ pub fn encrypt<E: Pairing>(
     apk: &AggregateKey<E>,
     t: usize,
     params: &UniversalParams<E>,
-    msg: PairingOutput<E>,
+    // Should this thing be from the scalar field and the multiplied by powers_of_h[0]?
+    tag: E::G2,
+    msg: E::TargetField,
 ) -> Ciphertext<E> {
     let mut rng = ark_std::test_rng();
-    let gamma = E::ScalarField::rand(&mut rng);
-    let gamma_g2 = params.powers_of_h[0] * gamma;
+    // let gamma = E::ScalarField::rand(&mut rng);
+    // let gamma_g2 = params.powers_of_h[0] * gamma;
+    let gamma_g2 = tag;
 
     let g = params.powers_of_g[0];
     let h = params.powers_of_h[0];
@@ -85,7 +88,7 @@ pub fn encrypt<E: Pairing>(
     sa2[5] = (params.powers_of_h[1] + apk.h_minus1) * s[4];
 
     // enc_key = s4*e_gh
-    let enc_key = apk.e_gh.mul(s[4]) + msg;
+    let enc_key = apk.e_gh.mul(s[4]) + PairingOutput(msg);
 
     Ciphertext {
         gamma_g2,

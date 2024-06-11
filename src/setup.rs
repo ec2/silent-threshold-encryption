@@ -13,7 +13,7 @@ use crate::kzg::{UniversalParams, KZG10};
 use rayon::iter::ParallelIterator;
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct SecretKey<E: Pairing> {
-    sk: E::ScalarField,
+    pub sk: E::ScalarField,
 }
 
 #[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
@@ -26,6 +26,7 @@ pub struct PublicKey<E: Pairing> {
     pub sk_li_by_tau: E::G1,    //hint
 }
 
+#[derive(CanonicalSerialize, CanonicalDeserialize, Clone)]
 pub struct AggregateKey<E: Pairing> {
     pub pk: Vec<PublicKey<E>>,
     pub agg_sk_li_by_z: Vec<E::G1>,
@@ -113,6 +114,11 @@ impl<E: Pairing> SecretKey<E> {
     pub fn partial_decryption(&self, ct: &Ciphertext<E>) -> E::G2 {
         ct.gamma_g2 * self.sk // kind of a bls signature on gamma_g2
     }
+}
+
+// gamma_g2 is the tag
+pub fn partial_decryption<E: Pairing>(gamma_g2: E::G2, sk: E::ScalarField) -> E::G2 {
+    gamma_g2 * sk // kind of a bls signature on gamma_g2
 }
 
 impl<E: Pairing> AggregateKey<E> {

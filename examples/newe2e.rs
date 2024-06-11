@@ -1,5 +1,3 @@
-use ark_ec::hashing::curve_maps::wb::WBMap;
-use ark_ec::hashing::map_to_curve_hasher::MapToCurveBasedHasher;
 use ark_ec::pairing::{Pairing, PairingOutput};
 use ark_ff::field_hashers::{DefaultFieldHasher, HashToField};
 use ark_std::UniformRand;
@@ -55,10 +53,7 @@ fn main() {
         start_timer!(|| format!("Encrypt::Setup with degree {} and threshold {}", n, t));
 
     let tag = G2::rand(&mut rng);
-    let g2_mapper =
-        MapToCurveBasedHasher::<G2, DefaultFieldHasher<Sha256, 128>, WBMap<G2Config>>::new(DOMAIN)
-            .context("Failed to create G2 hasher")?;
-    let hashed_tag = g2_mapper.hash(&tag).context("Failed to hash tag")?;
+
     let ct = encrypt::<E>(&agg_key, t, &params, tag, msg_hash);
     end_timer!(setup_time);
 

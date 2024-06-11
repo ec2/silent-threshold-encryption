@@ -13,6 +13,12 @@ ark-bls12-381 = { version = "0.4.0" }
 ark-serialize = { version = "0.4.0" }
 sha2 = "0.10.8"
 rayon = "1.10.0"
+age-core = "0.10.0"
+age = { version = "0.10.0", features = ["armor"] }
+hex = "0.4.3"
+num-bigint = "0.4.5"
+anyhow = "1.0.86"
+thiserror = "1.0.61"
 
 [features]
 asm = [ "ark-ff/asm" ]
