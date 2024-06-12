@@ -11,22 +11,15 @@ use ark_ec::{
     hashing::{curve_maps::wb::WBMap, map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve},
     pairing::Pairing,
 };
-use ark_ff::{
-    biginteger::BigInt,
-    field_hashers::{DefaultFieldHasher, HashToField},
-    BigInteger, Field, Fp384, PrimeField,
-};
+use ark_ff::{field_hashers::DefaultFieldHasher, BigInteger, Field, PrimeField};
 use ark_serialize::{CanonicalDeserialize as _, CanonicalSerialize as _};
 use decryption::agg_dec;
 use encryption::Ciphertext;
 use kzg::UniversalParams;
 use setup::AggregateKey;
 use sha2::Sha256;
+use std::io::{self, copy};
 use std::iter;
-use std::{
-    hash::Hash,
-    io::{self, copy},
-};
 use tage::{Identity, Recipient};
 
 type E = ark_bls12_381::Bls12_381;

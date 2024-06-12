@@ -1,5 +1,4 @@
 use ark_ec::pairing::PairingOutput;
-// use crate::utils::{lagrange_coefficients, transpose};
 use ark_ec::{pairing::Pairing, Group};
 use ark_poly::univariate::DensePolynomial;
 use ark_poly::DenseUVPolynomial;

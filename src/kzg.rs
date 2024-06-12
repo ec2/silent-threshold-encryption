@@ -22,7 +22,6 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelIterator as _};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 pub struct KZG10<E: Pairing> {
     _engine: PhantomData<E>,
-    // _poly: PhantomData<P>,
 }
 
 #[derive(Clone)]
